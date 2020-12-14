@@ -24,10 +24,10 @@ import (
 	"github.com/opencord/voltha-lib-go/v4/pkg/log"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/client-go/kubernetes"
 	"net/http"
 	"sync"
-	"time"
 )
 
 type Watcher struct {
@@ -46,15 +46,65 @@ func NewWatcher(client *kubernetes.Clientset, store *Store, cf *utils.ConfigFlag
 
 func (w *Watcher) Watch(ctx context.Context, wg *sync.WaitGroup) {
 	defer wg.Done()
-	for {
-		logger.Debug(ctx, "fetching-pods")
-		services, err := w.client.CoreV1().Services("").List(context.TODO(), metav1.ListOptions{LabelSelector: "app=bbsim"})
-		if err != nil {
-			panic(err.Error())
+
+	// we need to watch for PODs, services can't respond to requests if the backend is not there
+	// note that when this container starts we receive notifications for all of the existing pods
+
+	watcher, err := w.client.CoreV1().Pods("").Watch(context.TODO(), metav1.ListOptions{LabelSelector: "app=bbsim"})
+	if err != nil {
+		logger.Fatalw(ctx, "error-while-watching-pods", log.Fields{"err": err})
+	}
+
+	ch := watcher.ResultChan()
+	for event := range ch {
+
+		pod, ok := event.Object.(*v1.Pod)
+		if !ok {
+			logger.Fatalw(ctx, "unexpected-type-while-watching-pod", log.Fields{"object": event.Object})
 		}
-		logger.Debugf(ctx, "There are %d services in the cluster", len(services.Items))
-		w.handleServices(ctx, services)
-		time.Sleep(10 * time.Second)
+
+		logger.Debugw(ctx, "received-pod-event", log.Fields{"object": event.Type, "pod": pod.Name})
+		if event.Type == watch.Deleted {
+			// TODO remove sadis entries
+			logger.Debug(ctx, "pod-has-been-removed")
+		}
+
+		if event.Type == watch.Added || event.Type == watch.Modified {
+			// fetch the sadis information and store them
+
+			// the pod is ready only if all the containers in it are ready,
+			// for now the BBSim pod only has 1 container, but things may change in the future, so keep the loop
+			ready := true
+
+			if len(pod.Status.ContainerStatuses) == 0 {
+				// if there are no containers in the pod, then it's not ready
+				ready = false
+			}
+
+			for _, containerStatus := range pod.Status.ContainerStatuses {
+				if !containerStatus.Ready {
+					// if one of the container is not ready, then the entire pod is not ready
+					ready = false
+				}
+			}
+
+			logger.Debugw(ctx, "received-event-for-bbsim-pod", log.Fields{"pod": pod.Name, "namespace": pod.Namespace,
+				"release": pod.Labels["release"], "ready": ready})
+
+			// as soon as the pod is ready cache the sadis entries
+			if ready {
+				// note that we should one service
+				labelSelector := fmt.Sprintf("app=bbsim,release=%s", pod.Labels["release"])
+				services, err := w.client.CoreV1().Services(pod.Namespace).List(context.TODO(), metav1.ListOptions{LabelSelector: labelSelector})
+
+				if err != nil {
+					logger.Fatalw(ctx, "error-while-listing-services", log.Fields{"err": err})
+				}
+
+				w.handleServices(ctx, services)
+			}
+		}
+
 	}
 }
 
