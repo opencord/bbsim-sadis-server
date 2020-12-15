@@ -28,7 +28,10 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"net/http"
 	"sync"
+	"time"
 )
+
+const attemptLimit = 10
 
 type Watcher struct {
 	client *kubernetes.Clientset
@@ -111,19 +114,28 @@ func (w *Watcher) Watch(ctx context.Context, wg *sync.WaitGroup) {
 func (w *Watcher) handleServices(ctx context.Context, services *v1.ServiceList) {
 	// TODO if a service is removed we'll want to remove the related entries
 	for _, service := range services.Items {
-		if err := w.queryService(ctx, service); err != nil {
-			logger.Errorw(ctx, "error-while-reading-from-service", log.Fields{"error": err.Error()})
-		}
+		go func(service v1.Service) {
+			if err := w.queryService(ctx, service, 0); err != nil {
+				logger.Errorw(ctx, "error-while-reading-from-service", log.Fields{"error": err.Error()})
+			}
+		}(service)
 	}
 }
 
-func (w *Watcher) queryService(ctx context.Context, service v1.Service) error {
+func (w *Watcher) queryService(ctx context.Context, service v1.Service, attempt int) error {
 	endpoint := fmt.Sprintf("%s.%s.svc:%d", service.Name, service.Namespace, w.config.BBsimSadisPort)
 	logger.Infow(ctx, "querying-service", log.Fields{"endpoint": endpoint})
 
 	res, err := http.Get(fmt.Sprintf("http://%s/v2/static", endpoint))
 
 	if err != nil {
+		if attempt < attemptLimit {
+			logger.Warnw(ctx, "error-while-reading-from-service-retrying", log.Fields{"error": err.Error()})
+			// if there is an error and we have attempt left just retry later
+			time.Sleep(1 * time.Second)
+			return w.queryService(ctx, service, attempt+1)
+		}
+
 		return err
 	}
 
