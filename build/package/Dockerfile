@@ -15,7 +15,7 @@
 # bbsim-sadis-server dockerfile
 
 # builder parent
-FROM golang:1.13.8-stretch as builder
+FROM golang:1.16.3-stretch as builder
 
 ENV CGO_ENABLED=1
 
