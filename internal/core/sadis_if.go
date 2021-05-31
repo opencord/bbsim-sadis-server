@@ -95,9 +95,14 @@ type SadisUniTag struct {
 // SADIS BandwithProfile Entry
 type SadisBWPEntry struct {
 	ID  string `json:"id"`
-	AIR int    `json:"air"`
 	CBS int    `json:"cbs"`
 	CIR int    `json:"cir"`
-	EBS int    `json:"ebs"`
-	EIR int    `json:"eir"`
+	// MEF attributes
+	AIR int    `json:"air,omitempty"`
+	EBS int    `json:"ebs,omitempty"`
+	EIR int    `json:"eir,omitempty"`
+	// IETF attributes
+	GIR int    `json:"gir,omitempty"`
+	PIR int    `json:"pir,omitempty"`
+	PBS int    `json:"pbs,omitempty"`
 }
