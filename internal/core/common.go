@@ -16,7 +16,7 @@
 
 package core
 
-import "github.com/opencord/voltha-lib-go/v4/pkg/log"
+import "github.com/opencord/voltha-lib-go/v7/pkg/log"
 
 var logger log.CLogger
 

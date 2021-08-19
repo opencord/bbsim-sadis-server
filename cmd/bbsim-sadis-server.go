@@ -20,7 +20,7 @@ import (
 	"context"
 	"github.com/opencord/bbsim-sadis-server/internal/core"
 	"github.com/opencord/bbsim-sadis-server/internal/utils"
-	"github.com/opencord/voltha-lib-go/v4/pkg/log"
+	"github.com/opencord/voltha-lib-go/v7/pkg/log"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"

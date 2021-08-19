@@ -19,7 +19,7 @@ package core
 import (
 	"context"
 	"fmt"
-	"github.com/opencord/voltha-lib-go/v4/pkg/log"
+	"github.com/opencord/voltha-lib-go/v7/pkg/log"
 	"sync"
 )
 
