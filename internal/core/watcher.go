@@ -178,6 +178,7 @@ func (w *Watcher) queryService(ctx context.Context, service v1.Service, attempt 
 				IPAddress:          entry.IPAddress,
 				NasID:              entry.NasID,
 				UplinkPort:         entry.UplinkPort,
+				NniDhcpTrapVid:     entry.NniDhcpTrapVid,
 			}
 			w.store.addOlt(ctx, e)
 			continue

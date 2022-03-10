@@ -52,6 +52,7 @@ type SadisEntry struct {
 	IPAddress          string `json:"ipAddress"`
 	NasID              string `json:"nasId"`
 	UplinkPort         int    `json:"uplinkPort"`
+	NniDhcpTrapVid     int    `json:"nniDhcpTrapVid,omitempty"`
 	// onu
 	NasPortID  string        `json:"nasPortId"`
 	CircuitID  string        `json:"circuitId"`
@@ -65,6 +66,7 @@ type SadisOltEntry struct {
 	IPAddress          string `json:"ipAddress"`
 	NasID              string `json:"nasId"`
 	UplinkPort         int    `json:"uplinkPort"`
+	NniDhcpTrapVid     int    `json:"nniDhcpTrapVid,omitempty"`
 }
 
 type SadisOnuEntryV2 struct {
