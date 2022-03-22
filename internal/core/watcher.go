@@ -92,48 +92,34 @@ func (w *Watcher) Watch(ctx context.Context, wg *sync.WaitGroup) {
 			}
 
 			logger.Debugw(ctx, "received-event-for-bbsim-pod", log.Fields{"pod": pod.Name, "namespace": pod.Namespace,
-				"release": pod.Labels["release"], "ready": ready})
+				"release": pod.Labels["release"], "ready": ready, "podIp": pod.Status.PodIP})
 
 			// as soon as the pod is ready cache the sadis entries
 			if ready {
-				// note that we should one service
-				labelSelector := fmt.Sprintf("app=bbsim,release=%s", pod.Labels["release"])
-				services, err := w.client.CoreV1().Services(pod.Namespace).List(context.TODO(), metav1.ListOptions{LabelSelector: labelSelector})
-
-				if err != nil {
-					logger.Fatalw(ctx, "error-while-listing-services", log.Fields{"err": err})
+				if err := w.queryPod(ctx, pod.Status.PodIP, 0); err != nil {
+					logger.Errorw(ctx, "failed-to-load-sadis-config-from-bbsim",
+						log.Fields{"pod": pod.Name, "namespace": pod.Namespace, "release": pod.Labels["release"], "err": err})
 				}
-
-				w.handleServices(ctx, services)
 			}
 		}
 
 	}
 }
 
-func (w *Watcher) handleServices(ctx context.Context, services *v1.ServiceList) {
-	// TODO if a service is removed we'll want to remove the related entries
-	for _, service := range services.Items {
-		go func(service v1.Service) {
-			if err := w.queryService(ctx, service, 0); err != nil {
-				logger.Errorw(ctx, "error-while-reading-from-service", log.Fields{"error": err.Error()})
-			}
-		}(service)
-	}
-}
-
-func (w *Watcher) queryService(ctx context.Context, service v1.Service, attempt int) error {
-	endpoint := fmt.Sprintf("%s.%s.svc:%d", service.Name, service.Namespace, w.config.BBsimSadisPort)
+func (w *Watcher) queryPod(ctx context.Context, ip string, attempt int) error {
+	endpoint := fmt.Sprintf("%s:%d", ip, w.config.BBsimSadisPort)
 	logger.Infow(ctx, "querying-service", log.Fields{"endpoint": endpoint})
 
-	res, err := http.Get(fmt.Sprintf("http://%s/v2/static", endpoint))
+	client := http.Client{Timeout: 5 * time.Second}
+
+	res, err := client.Get(fmt.Sprintf("http://%s/v2/static", endpoint))
 
 	if err != nil {
 		if attempt < attemptLimit {
 			logger.Warnw(ctx, "error-while-reading-from-service-retrying", log.Fields{"error": err.Error()})
 			// if there is an error and we have attempt left just retry later
 			time.Sleep(1 * time.Second)
-			return w.queryService(ctx, service, attempt+1)
+			return w.queryPod(ctx, ip, attempt+1)
 		}
 
 		return err
@@ -156,19 +142,6 @@ func (w *Watcher) queryService(ctx context.Context, service v1.Service, attempt 
 		"entries":           len(result.Sadis.Entries),
 		"bandwidthProfiles": len(result.BandwidthProfile.Entries),
 	})
-
-	//for _, entry := range result.Sadis.Entries {
-	//	switch entry.(type) {
-	//	case SadisOltEntry:
-	//	case *SadisOltEntry:
-	//		logger.Infow(ctx, "olt-entry", log.Fields{"entry": entry})
-	//	case SadisOnuEntryV2:
-	//	case *SadisOnuEntryV2:
-	//		logger.Infow(ctx, "onu-entry", log.Fields{"entry": entry})
-	//	default:
-	//		logger.Warnw(ctx, "unknown-entity", log.Fields{"entry": entry})
-	//	}
-	//}
 
 	for _, entry := range result.Sadis.Entries {
 		if entry.HardwareIdentifier != "" {

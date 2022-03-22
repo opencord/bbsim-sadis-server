@@ -37,9 +37,9 @@ type ConfigFlags struct {
 
 func NewConfigFlags() *ConfigFlags {
 	flags := &ConfigFlags{
-		LogLevel:   defaultLogLevel,
-		LogFormat:  defaultLogFormat,
-		Kubeconfig: "",
+		LogLevel:       defaultLogLevel,
+		LogFormat:      defaultLogFormat,
+		Kubeconfig:     "",
 		BBsimSadisPort: defaultBBsimSadisPort,
 	}
 	return flags

@@ -23,7 +23,7 @@ import (
 	"testing"
 )
 
-func init()  {
+func init() {
 	SetupLogger(log.ErrorLevel, "console")
 }
 
@@ -31,7 +31,7 @@ func Test_getBp(t *testing.T) {
 	store := NewStore()
 
 	bp := SadisBWPEntry{
-		ID: "test-bp",
+		ID:  "test-bp",
 		AIR: 20,
 	}
 
