@@ -1,4 +1,4 @@
-# Copyright 2020-present Open Networking Foundation
+# Copyright 2020-2023 Open Networking Foundation (ONF) and the ONF Contributors
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,9 +12,32 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+$(if $(DEBUG),$(warning ENTER))
 
-# set default shell
-SHELL = bash -e -o pipefail
+.PHONY: help clean help test
+.DEFAULT_GOAL := help
+
+##-------------------##
+##---]  GLOBALS  [---##
+##-------------------##
+TOP ?=$(strip \
+  $(dir \
+    $(abspath $(lastword $(MAKEFILE_LIST)))\
+   )\
+)
+
+##--------------------##
+##---]  INCLUDES  [---##
+##--------------------##
+include $(TOP)/config.mk#                # configure
+
+# -----------------------------------------------------------------------
+# https://jira.opencord.org/browse/VOL-5163
+#   - only a tiny subset of logic is enabled right now.
+#   - several targets can also be refactored across several repos
+#     into additional library targets.
+# -----------------------------------------------------------------------
+include $(TOP)/makefiles/include.mk      # top level include
 
 # Variables
 VERSION                    ?= $(shell cat ./VERSION)
@@ -58,50 +81,92 @@ GOCOVER_COBERTURA = docker run --rm --user $$(id -u):$$(id -g) -v ${CURDIR}:/app
 GOLANGCI_LINT     = docker run --rm --user $$(id -u):$$(id -g) -v ${CURDIR}:/app $(shell test -t 0 && echo "-it") -v gocache:/.cache -v gocache-${VOLTHA_TOOLS_VERSION}:/go/pkg voltha/voltha-ci-tools:${VOLTHA_TOOLS_VERSION}-golangci-lint golangci-lint
 HADOLINT          = docker run --rm --user $$(id -u):$$(id -g) -v ${CURDIR}:/app $(shell test -t 0 && echo "-it") voltha/voltha-ci-tools:${VOLTHA_TOOLS_VERSION}-hadolint hadolint
 
-help:
+help ::
 	@echo "TODO write the help"
 
+.PHONY: build
 build:
+	$(call banner-enter,Target $@)
 	@${GO} build -mod=vendor ./cmd/bbsim-sadis-server.go
+	$(call banner-leave,Target $@)
 
+.PHONY: build-local
 build-local:
 	@go build -mod=vendor ./cmd/bbsim-sadis-server.go
 
 ## Docker targets
+.PHONY: docker-build
 docker-build:
 	docker build $(DOCKER_BUILD_ARGS) -t ${IMAGENAME}:${DOCKER_TAG} -f build/package/Dockerfile .
 
+.PHONY: docker-push
 docker-push:
 	docker push ${IMAGENAME}:${DOCKER_TAG}
 
+.PHONY: docker-kind-load
 docker-kind-load:
 	@if [ "`kind get clusters | grep voltha-$(TYPE)`" = '' ]; then echo "no voltha-$(TYPE) cluster found" && exit 1; fi
 	kind load docker-image ${IMAGENAME}:${DOCKER_TAG} --name=voltha-$(TYPE) --nodes $(shell kubectl get nodes --template='{{range .items}}{{.metadata.name}},{{end}}' | rev | cut -c 2- | rev)
 
 ## lint and unit tests
 
+.PHONY: lint-dockerfile
 lint-dockerfile:
 	@echo "Running Dockerfile lint check..."
 	@${HADOLINT} $$(find ./build -name "Dockerfile*")
 	@echo "Dockerfile lint check OK"
 
+## -----------------------------------------------------------------------
+## -----------------------------------------------------------------------
 lint-mod:
+	$(call banner-entry,Target $@)
 	@echo "Running dependency check..."
 	@${GO} mod verify
 	@echo "Dependency check OK. Running vendor check..."
 	@git status > /dev/null
 	@git diff-index --quiet HEAD -- go.mod go.sum vendor || (echo "ERROR: Staged or modified files must be committed before running this test" && git status -- go.mod go.sum vendor && exit 1)
 	@[[ `git ls-files --exclude-standard --others go.mod go.sum vendor` == "" ]] || (echo "ERROR: Untracked files must be cleaned up before running this test" && git status -- go.mod go.sum vendor && exit 1)
-	${GO} mod tidy
-	${GO} mod vendor
+
+	$(HIDE)$(MAKE) --no-print-directory mod-update
+
 	@git status > /dev/null
 	@git diff-index --quiet HEAD -- go.mod go.sum vendor || (echo "ERROR: Modified files detected after running go mod tidy / go mod vendor" && git status -- go.mod go.sum vendor && git checkout -- go.mod go.sum vendor && exit 1)
 	@[[ `git ls-files --exclude-standard --others go.mod go.sum vendor` == "" ]] || (echo "ERROR: Untracked files detected after running go mod tidy / go mod vendor" && git status -- go.mod go.sum vendor && git checkout -- go.mod go.sum vendor && exit 1)
 	@echo "Vendor check OK."
+	$(call banner-leave,Target $@)
 
 
+## -----------------------------------------------------------------------
+## -----------------------------------------------------------------------
+.PHONY: mod-update
+mod-update: mod-tidy mod-vendor
+
+## -----------------------------------------------------------------------
+## -----------------------------------------------------------------------
+.PHONY: mod-tidy
+mod-tidy :
+	$(call banner-enter,Target $@)
+	${GO} mod tidy
+	$(call banner-leave,Target $@)
+
+## -----------------------------------------------------------------------
+## -----------------------------------------------------------------------
+.PHONY: mod-vendor
+mod-vendor : mod-tidy
+mod-vendor :
+	$(call banner-enter,Target $@)
+	$(if $(LOCAL_FIX_PERMS),chmod o+w $(CURDIR))
+	${GO} mod vendor
+	$(if $(LOCAL_FIX_PERMS),chmod o-w $(CURDIR))
+	$(call banner-leave,Target $@)
+
+## -----------------------------------------------------------------------
+## -----------------------------------------------------------------------
 lint: lint-mod lint-dockerfile
 
+## -----------------------------------------------------------------------
+## Coverage report: Static code analysis
+## -----------------------------------------------------------------------
 sca:
 	@rm -rf ./sca-report
 	@mkdir -p ./sca-report
@@ -110,6 +175,8 @@ sca:
 	@echo ""
 	@echo "Static code analysis OK"
 
+## -----------------------------------------------------------------------
+## -----------------------------------------------------------------------
 test:
 	@mkdir -p ./tests/results
 	@${GO} test -mod=vendor -v -coverprofile ./tests/results/go-test-coverage.out -covermode count ./... 2>&1 | tee ./tests/results/go-test-results.out ;\
@@ -118,9 +185,9 @@ test:
 	${GOCOVER_COBERTURA} < ./tests/results/go-test-coverage.out > ./tests/results/go-test-coverage.xml ;\
 	exit $$RETURN
 
+## -----------------------------------------------------------------------
+## -----------------------------------------------------------------------
 distclean:
-	rm -rf ./sca-report
+	$(RM) -r ./sca-report
 
-mod-update:
-	${GO} mod tidy
-	${GO} mod vendor
+# [EOF]
