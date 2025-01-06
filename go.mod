@@ -11,7 +11,7 @@ replace (
 require (
 	github.com/gorilla/mux v1.8.0
 	github.com/imdario/mergo v0.3.11 // indirect
-	github.com/opencord/voltha-lib-go/v7 v7.5.3
+	github.com/opencord/voltha-lib-go/v7 v7.6.3
 	gotest.tools v2.2.0+incompatible
 	k8s.io/api v0.19.0
 	k8s.io/apimachinery v0.19.0
